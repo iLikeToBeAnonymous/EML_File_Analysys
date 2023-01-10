@@ -7,7 +7,7 @@ import re # so you co do regex matching and stuff.
 import os # ChatGPT
 import email # for parsing .eml files
 from os import path
-from collections import Counter # ChatGPT
+from collections import Counter, OrderedDict # ChatGPT
 
 # # Compile the regex used to match the field name
 # fieldNmRegex = re.compile("^(?<fieldName>[A-Za-z0-9\-]+):.*$")
@@ -35,12 +35,35 @@ from collections import Counter # ChatGPT
 ###############################
 ### BEGIN CODE FROM ChatGPT ###
 def extract_fields(eml_file):
+    fields = []
     with open(eml_file, 'rb') as fileContents:
         msg = email.message_from_binary_file(fileContents)
-        fields = []
-        for field in msg.keys():
-            fields.append(field)
-        return fields
+        for part in msg.walk():
+            for field in part.keys():
+                fields.append(field)
+    return fields
+
+
+# def extract_fields(eml_file):
+#     with open(eml_file, 'rb') as fileContents:
+#         msg = email.message_from_binary_file(fileContents)
+#         fields = []
+
+#         # if msg.is_multipart():
+#         #     parts = msg.get_payload()
+#         #     # print(parts[1].items())
+#         #     # print(parts[1]['Content-type'])
+#         #     # print(parts[1])
+#         #     for part in parts:
+#         #         print(part.items())
+#         #         # part_headers = part.items()
+#         #         # part_payload = part.get_payload()
+#         #         # print(part_headers)
+#         #         # print(part_payload)
+
+#         for field in msg.keys():
+#             fields.append(field)
+#         return fields
 
 # V1 from ChatGPT---------------------------------#
 # def analyze_folder(folder):
@@ -69,6 +92,14 @@ def analyze_folder(folder):
         if eml_file.endswith('.eml'):
             fields = extract_fields(os.path.join(folder, eml_file))
             fields_list.extend(fields)
+
+    # # BEGIN TESTING OF SINGLE FILE
+    # eml_file = os.listdir(folder)[18]
+    # print(eml_file)
+    # fields = extract_fields(os.path.join(folder, eml_file))
+    # fields_list.extend(fields)
+    # # END TESTING OF SINGLE FILE #
+
     fields_counter = Counter(fields_list)
     fields_dict = {}
     for field, count in fields_counter.items():
@@ -89,6 +120,10 @@ folder_path = path.join(myDir, targetFolder) # mine
 
 # Below two lines work with analyze_folder V3
 fields_dict = analyze_folder(folder_path)
-print(json.dumps(fields_dict, indent=4))
-#### END CODE FROM ChatGPT ####
-###############################
+# print(json.dumps(fields_dict, indent=4))
+# _______________________________________________________
+# Replaced the version of the above line with a sorting option
+# See https://www.geeksforgeeks.org/python-sort-python-dictionaries-by-key-or-value/
+sorted_vs = OrderedDict(sorted(fields_dict.items()))
+print(json.dumps(sorted_vs, indent=4))
+

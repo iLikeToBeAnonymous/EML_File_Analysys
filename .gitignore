@@ -1,0 +1,5 @@
+*.eml
+/ThunderbirdExports
+/EmlAnalysis.json
+/EmlAnalysis.csv
+/ERROR_LOG.txt

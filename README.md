@@ -13,4 +13,11 @@ Analyze the many `.eml` files (test data set was on approximately 50k files) and
 - Nature of the message received (e.g., bounced, delayed, failed, etc.)
 - If an error/warning message has the sender listed as a mail server, look elsewhere in the message contents to identify the original email address having the problem.
 
-### _Method_
+## Misc (needs organized)
+At this stage, the primary script used is `Eml_error_and_email_compilation.py`.
+
+### _Multi-part Messages_
+I found out that warning and error messages are oftentimes what are called "multipart" messages. This can be seen by looking at
+the topmost `Content-Type` field in a `.eml` file. If a message is multipart, it seems that the Python email module does not look
+at fields that appear after the first occurrence of `Content-Type`. In my testing, the only way to extract all additonal fields is by using
+the `.walk()` method.

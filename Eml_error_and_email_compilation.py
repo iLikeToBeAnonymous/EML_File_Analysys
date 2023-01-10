@@ -18,14 +18,46 @@ def extract_info(file_path):
     with open(file_path, 'r') as fileContents:
         msg = email.message_from_file(fileContents)
 
-        problem_addr = msg['X-Failed-Recipients']
-        # If 'problem_addr' is still null, set it to the first valid email address in the 'From' field
-        if problem_addr is None:
-            problem_addr = re.findall(r'[\w\.-]+@[\w\.-]+', msg['From'])[0]
-            
-        subject = msg['Subject']
-        auto_reply = msg['Auto-Submitted']
-        return (problem_addr, subject, auto_reply)
+        xtractedFlds = {}
+        xtractedFlds['Subject']= msg['Subject']
+        xtractedFlds['X-Failed-Recipients']= msg['X-Failed-Recipients']
+        xtractedFlds['Original-Recipient']= msg['Original-Recipient']
+        xtractedFlds['Final-Recipient']= msg['Final-Recipient']
+        xtractedFlds['From']= msg['From']
+        xtractedFlds['To']= msg['To']
+        xtractedFlds['Original-Recipient']= msg['Original-Recipient']
+        xtractedFlds['Auto-Submitted']= msg['Auto-Submitted']
+        
+        for part in msg.walk():
+            for key in xtractedFlds.keys():
+                if xtractedFlds[key] is None:
+                    xtractedFlds[key] = part[key]
+
+        if xtractedFlds['Final-Recipient'] is None:
+            xtractedFlds['Final-Recipient'] = 'Final-Recipient@no.val'
+        # problem_addr = msg['X-Failed-Recipients']
+        # # If 'problem_addr' is still null, set it to the 
+        # if problem_addr is None:
+        #     if 'MAILER-DAEMON' in msg['From'] or 'postmaster' in msg['From']:
+        #         problem_addr = msg['Original-Recipient']
+        # # If 'problem_addr' is still null, try the 'Final-Recipient' field instead
+        # if problem_addr is None:
+        #     problem_addr = msg['Final-Recipient']
+        # # If 'problem_addr' is STILL null, give up and set it to the first valid email address in the 'From' field
+        # if problem_addr is None:
+        #     problem_addr = re.findall(r'[\w\.-]+@[\w\.-]+', msg['From'])[0]
+        
+        # xtractedFlds['Final-Recipient'] = problem_addr
+        # subject = msg['Subject']
+        # auto_reply = msg['Auto-Submitted']
+        # # print(msg['Subject'])
+        # # print(msg['Final-Recipient']) 
+        # # print (problem_addr, subject, auto_reply)
+        # print (xtractedFlds)
+        # return (problem_addr, subject, auto_reply)
+        # print(xtractedFlds['Final-Recipient'])
+        return (xtractedFlds['Final-Recipient'], xtractedFlds['Subject'], xtractedFlds['Auto-Submitted'])
+# END extract_info function ---------------------------------------------------------#
 
 # Create an empty dictionary to store the information
 info_dict = {}
@@ -36,6 +68,7 @@ info_dict = {}
 myDir = path.abspath(path.dirname(__file__)) # mine
 targetFolder = 'ThunderbirdExports-TESTING' # mine
 folder_path = path.join(myDir, targetFolder) # mine
+emailRegEx = re.compile("(([a-zA-Z0-9_\.\-\+]{1,})@((([a-zA-Z0-9\-])+\.)+([a-zA-Z0-9]{2,4})+))") # using re.compile is faster if using the pattern repeatedly.
 
 # Iterate over the .eml files in the folder
 for eml_file in os.listdir(folder_path):
@@ -45,18 +78,25 @@ for eml_file in os.listdir(folder_path):
         # Create the full file path
         file_path = os.path.join(folder_path, eml_file)
         # Extract the relevant information from the file
-        problem_addr, subject, auto_reply = extract_info(file_path)
+        emailAddr, subject, auto_reply = extract_info(file_path)
+        # print(type(emailAddr)) # print(str.format("Type is:  {type(emailAddr)}"))
+        problem_addr = str(emailAddr)
+        cleaned_addr = re.findall(r'[\w\.-]+@[\w\.-]+', problem_addr)[0]
+        # problem_addr = re.findall(emailRegEx, emailAddr)[0]
         # Add the extracted information to the dictionary
         # If problem_addr already exists, update it
-        if problem_addr in info_dict:
-            info_dict[problem_addr]['frequency'] += 1
-            if subject in info_dict[problem_addr]['subjects']:
-                info_dict[problem_addr]['subjects'][subject] += 1
-            if auto_reply in info_dict[problem_addr]['auto_replies']:
-                info_dict[problem_addr]['auto_replies'][auto_reply] += 1
+        if cleaned_addr in info_dict:
+            info_dict[cleaned_addr]['frequency'] += 1
+            if subject in info_dict[cleaned_addr]['subjects']:
+                info_dict[cleaned_addr]['subjects'][subject] += 1
+            else: 
+                info_dict[cleaned_addr]['subjects'][subject] = 1
+            if auto_reply in info_dict[cleaned_addr]['auto_replies']:
+                info_dict[cleaned_addr]['auto_replies'][auto_reply] += 1
         # If problem_addr doesn't already exist, add it.
         else:
-            info_dict[problem_addr] = {'frequency': 0, 
+            info_dict[cleaned_addr] = {
+                'frequency': 1, 
                 'subjects': {subject: 1}, 
                 'auto_replies': {auto_reply: 1}
             }

@@ -36,6 +36,7 @@ def extract_info(file_path):
         
         # Used for filtering out invalid results
         clientAddr = xtractedFlds['Delivered-To']
+        exclude_these = [clientAddr] # Can be an array of things to remove
 
         for part in msg.walk():
             for key in xtractedFlds.keys():
@@ -43,17 +44,27 @@ def extract_info(file_path):
                     # To avoid setting the val of a key to that of the client's email addr
                     if clientAddr not in str(part[key]): 
                         xtractedFlds[key] = part[key]
-
+            if part.get_content_type() == "text/plain":
+                body = part.get_payload(decode=True)
+                # Body has been extracted
+                body_decoded = body.decode()
+                # Extract all valid emails from body
+                body_emails = re.findall(emailRegEx, body_decoded)
         # print(xtractedFlds['X-Ham-Report']) # WORKS
         # print(re.findall(r'[\w\.-]+@[\w\.-]+', str(xtractedFlds['X-Ham-Report']))) # WORKS
         # print(re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))) # WORKS
+
+        if body_emails is not None: # This list should be populated
+            # Use list comprehension to filter out unwanted addresses and store the result in a new list
+            filtered_addrs = [x for x in body_emails if x not in exclude_these]
+            xtractedFlds['msgBody'] = filtered_addrs
+        # print('Email addresses found in body: ' + str(filtered_addrs))
 
         if xtractedFlds['X-Ham-Report'] is not None:
             # Clean it so it's just email addresses
             addrs_only = re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))
 
             # Now strip out email addresses you don't want in there
-            exclude_these = [clientAddr] # Can be an array of things to remove
             filtered_addrs = [x for x in addrs_only if x not in exclude_these]
 
             # Now set it back to the original object
@@ -116,7 +127,7 @@ for eml_file in os.listdir(folder_path):
         big_array.append(emlData)
         # print(type(emailAddr)) # print(str.format("Type is:  {type(emailAddr)}"))
         problem_addr = str(emlData['Final-Recipient'])
-        cleaned_addr = re.findall(r'[\w\.-]+@[\w\.-]+', problem_addr)[0]
+        cleaned_addr = re.findall(emailRegEx, problem_addr)[0]
         subject = emlData['Subject']
         thread_topic = emlData['Thread-Topic']
         auto_reply = emlData['Auto-Submitted']
@@ -156,6 +167,12 @@ for eml_file in os.listdir(folder_path):
 # # END DEPLOYMENT
 
 # DEVELOPMENT
-json_str = json.dumps(big_array, indent=4)
+# json_str = json.dumps(big_array, indent=4)
+# filtered_big_array is the subset of big_array wherein the msgBody list isn't empty
+#   A more efficient way than checking len(x['msgBody']) is to leverage the fact
+#   that when a list is put in an if statement, it returns True if non-empty and false otherwise.
+#   See https://datagy.io/check-if-python-list-is-empty/
+filtered_big_array = [x for x in big_array if x['msgBody']]
+json_str = json.dumps(filtered_big_array, indent=4)
 print(json_str)
 # END DEVELOPMENT

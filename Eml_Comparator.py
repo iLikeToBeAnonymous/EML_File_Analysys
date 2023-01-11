@@ -6,6 +6,7 @@ import json # json lib for functions and prettifying things.
 import re # so you co do regex matching and stuff.
 import os # ChatGPT
 import email # for parsing .eml files
+from email.iterators import _structure
 from os import path
 from collections import Counter, OrderedDict # ChatGPT
 
@@ -34,36 +35,54 @@ from collections import Counter, OrderedDict # ChatGPT
 
 ###############################
 ### BEGIN CODE FROM ChatGPT ###
-def extract_fields(eml_file):
+def extract_fields(eml_filepath):
     fields = []
-    with open(eml_file, 'rb') as fileContents:
+    with open(eml_filepath, 'rb') as fileContents:
         msg = email.message_from_binary_file(fileContents)
         for part in msg.walk():
             for field in part.keys():
                 fields.append(field)
     return fields
 
+def extract_body(file_path):
+    with open(file_path, 'rb') as f:
+        msg = email.message_from_binary_file(f)
+    body_fields = {}
+    for part in msg.walk():
+        if part.get_content_type() == "text/plain":
+            body = part.get_payload(decode=True)
+            body_decoded = body.decode()
+            # print("var body is of type: " + str(type(body))) # DEBUGGING AND INFO
+            # print("var body_decoded is of type:  " + str(type(body_decoded))) # DEBUGGING AND INFO
+    # print(str(body_decoded))
+    # # print(json.dumps(body_fields, indent=4))
+    print('Email addresses found in body: ' + str(re.findall(r'[\w\.-]+@[\w\.-]+', body_decoded)))
+    # # print('Sudo fields found in body: ' + str(re.findall(r'\n[\u0020\w]+:', body_decoded)))
+    # # print(_structure(msg))
+    # print('Sudo-fields found in body: ' + str(re.findall(r'^\w[\u0020\w]+:.*', body_decoded)))
 
+# # DEBUGGING AND TESTING
 # def extract_fields(eml_file):
 #     with open(eml_file, 'rb') as fileContents:
 #         msg = email.message_from_binary_file(fileContents)
 #         fields = []
 
-#         # if msg.is_multipart():
-#         #     parts = msg.get_payload()
-#         #     # print(parts[1].items())
-#         #     # print(parts[1]['Content-type'])
-#         #     # print(parts[1])
-#         #     for part in parts:
-#         #         print(part.items())
-#         #         # part_headers = part.items()
-#         #         # part_payload = part.get_payload()
-#         #         # print(part_headers)
-#         #         # print(part_payload)
+#         if msg.is_multipart():
+#             parts = msg.get_payload()
+#             # print(parts[1].items())
+#             # print(parts[1]['Content-type'])
+#             # print(parts[1])
+#             for part in parts:
+#                 # print(part.items())
+#                 # part_headers = part.items()
+#                 part_payload = part.get_payload()
+#                 # print(part_headers)
+#                 print(part_payload)
 
 #         for field in msg.keys():
 #             fields.append(field)
 #         return fields
+# # END DEBUGGING AND TESTING        
 
 # V1 from ChatGPT---------------------------------#
 # def analyze_folder(folder):
@@ -88,17 +107,23 @@ def extract_fields(eml_file):
 # V3 from ChatGPT---------------------------------#
 def analyze_folder(folder):
     fields_list = []
+    # DEPLOYMENT (ALL FILES IN FOLDER)
     for eml_file in os.listdir(folder):
         if eml_file.endswith('.eml'):
             fields = extract_fields(os.path.join(folder, eml_file))
             fields_list.extend(fields)
+    # END DEPLOYMENT SECTION
 
-    # # BEGIN TESTING OF SINGLE FILE
-    # eml_file = os.listdir(folder)[18]
-    # print(eml_file)
+    # # BEGIN TESTING OF SINGLE FILE (MINE) #
+    # eml_file = os.listdir(folder)[5]
+    # print(eml_file) # EML file name
     # fields = extract_fields(os.path.join(folder, eml_file))
     # fields_list.extend(fields)
-    # # END TESTING OF SINGLE FILE #
+    # # END TESTING OF SINGLE FILE (MINE)   #
+
+    #----- Begin test of extract_body() -----#
+            print(extract_body(os.path.join(folder, eml_file)))
+    #------ End test of extract_body() ------#
 
     fields_counter = Counter(fields_list)
     fields_dict = {}
@@ -125,5 +150,5 @@ fields_dict = analyze_folder(folder_path)
 # Replaced the version of the above line with a sorting option
 # See https://www.geeksforgeeks.org/python-sort-python-dictionaries-by-key-or-value/
 sorted_vs = OrderedDict(sorted(fields_dict.items()))
-print(json.dumps(sorted_vs, indent=4))
+# print(json.dumps(sorted_vs, indent=4))
 

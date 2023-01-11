@@ -176,3 +176,23 @@ filtered_big_array = [x for x in big_array if x['msgBody']]
 json_str = json.dumps(filtered_big_array, indent=4)
 print(json_str)
 # END DEVELOPMENT
+
+# SAVE THE JSON ARRAY TO FILE
+output_filename = 'EmlAnalysis.json'
+# open in write-mode will create a file if it doesn't exist and overwrite it if it does.
+with open(output_filename, mode='w') as target_file:
+    # target_file.write(json_str)
+    # USE json.dump() to handle encoding
+    json.dump(obj=filtered_big_array, indent=4, fp=target_file)
+target_file.close
+# END SAVE JSON ARRAY TO FILE
+
+# SAVE SUMMARY OBJ TO JSON FILE
+output_filename = 'EmlAnalysis_SUMMARY.json'
+# open in write-mode will create a file if it doesn't exist and overwrite it if it does.
+with open(output_filename, mode='w') as target_file:
+    # target_file.write(json_str)
+    # USE json.dump() to handle encoding
+    json.dump(obj=info_dict, indent=4, fp=target_file)
+target_file.close
+# END SAVE SUMMARY OBJ TO JSON FILE

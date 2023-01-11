@@ -21,7 +21,17 @@ Analyze the many `.eml` files (test data set was on approximately 50k files) and
 ## Misc (needs organized)
 At this stage, the primary script used is `Eml_error_and_email_compilation.py`.
 
-My Python scripts (so far) rely heavily on the `email` module, specifically [`email.message.Message`](https://docs.python.org/3/library/email.compat32-message.html).
+My Python scripts (so far) rely heavily on the `email` module, specifically [`email.message.Message`](https://docs.python.org/3/library/email.compat32-message.html).  
+The newer form is [`email.message`](https://docs.python.org/3/library/email.message.html).
+
+ChatGPT recommended the regex `r'[\w\.-]+@[\w\.-]+'`, but I found that in some cases, it would match to
+non-addresses that happened to contain an "`@`" symbol. Therefore I fell back to my own regex and compiled
+it as a global variable in the main script:
+
+```Python
+emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}")
+```
+This has the (supposed) added advantage of being more efficient, but I don't know if this is true with modern Python versions.
 
 ### _Multi-part Messages_
 I found out that warning and error messages are oftentimes what are called "multipart" messages. This can be seen by looking at

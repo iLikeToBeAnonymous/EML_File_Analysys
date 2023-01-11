@@ -33,6 +33,22 @@ emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}
 ```
 This has the (supposed) added advantage of being more efficient, but I don't know if this is true with modern Python versions.
 
+### _Difference between `json.dump()` and `json.dumps()`_
+While this is obvious in hindsight, I think this is worth putting here in case I (or anyone else) needs a reminder.
+When I asked this of ChatGPT (Jan 9, 2023 version), I got the following answer:
+
+> _`json.dump()` and `json.dumps()` are two methods provided by the `json` module in Python for working with JSON data. The main difference between them is in how they handle the data:_
+
+> - `json.dump(obj, fp, *, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, cls=None, indent=None, separators=None, default=None, sort_keys=False, **kw)`  
+>_This method writes a Python object obj to a file-like object fp (such as a file opened in write mode) in JSON format._
+>
+> - `json.dumps(obj, *, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, cls=None, indent=None, separators=None, default=None, sort_keys=False, **kw)`  
+> _This method converts a Python object `obj` to a JSON formatted string._
+
+> _In summary, `json.dumps()` is used to convert a Python object to a JSON string, while `json.dump()` is used to write a Python object to a file-like object in JSON format._
+
+> _The other arguments in `json.dump()` and `json.dumps()` are used for more specific purposes such as setting the indentation for pretty-printing of json, allow or disallow certain types of data in json and more, you can check the documentation for more details._
+
 ### _Multi-part Messages_
 I found out that warning and error messages are oftentimes what are called "multipart" messages. This can be seen by looking at
 the topmost `Content-Type` field in a `.eml` file. If a message is multipart, it seems that the Python email module does not look

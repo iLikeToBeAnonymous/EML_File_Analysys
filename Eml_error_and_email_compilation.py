@@ -13,6 +13,9 @@ import os
 from os import path # MINE
 from collections import Counter
 
+# Making this global. Will Probably move this to a config folder later.
+emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
+
 # Define a function to extract the relevant information from a .eml file
 def extract_info(file_path):
     with open(file_path, 'r') as fileContents:
@@ -28,6 +31,8 @@ def extract_info(file_path):
         xtractedFlds['From']= msg['From']
         xtractedFlds['To']= msg['To']
         xtractedFlds['Auto-Submitted']= msg['Auto-Submitted']
+        xtractedFlds['X-Ham-Report']= msg['X-Ham-Report']
+        # xtractedFlds['X-Ham-Report']= re.findall(emailRegEx, str(msg['X-Ham-Report']))
         
         # Used for filtering out invalid results
         clientAddr = xtractedFlds['Delivered-To']
@@ -38,6 +43,21 @@ def extract_info(file_path):
                     # To avoid setting the val of a key to that of the client's email addr
                     if clientAddr not in str(part[key]): 
                         xtractedFlds[key] = part[key]
+
+        # print(xtractedFlds['X-Ham-Report']) # WORKS
+        # print(re.findall(r'[\w\.-]+@[\w\.-]+', str(xtractedFlds['X-Ham-Report']))) # WORKS
+        # print(re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))) # WORKS
+
+        if xtractedFlds['X-Ham-Report'] is not None:
+            # Clean it so it's just email addresses
+            addrs_only = re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))
+
+            # Now strip out email addresses you don't want in there
+            exclude_these = [clientAddr] # Can be an array of things to remove
+            filtered_addrs = [x for x in addrs_only if x not in exclude_these]
+
+            # Now set it back to the original object
+            xtractedFlds['X-Ham-Report'] = filtered_addrs
 
         if xtractedFlds['Final-Recipient'] is None:
             if xtractedFlds['X-Failed-Recipients'] is not None:
@@ -81,8 +101,8 @@ info_dict = {}
 myDir = path.abspath(path.dirname(__file__)) # mine
 targetFolder = 'ThunderbirdExports-TESTING' # mine
 folder_path = path.join(myDir, targetFolder) # mine
-emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
-
+# emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
+big_array = []
 # Iterate over the .eml files in the folder
 for eml_file in os.listdir(folder_path):
     # Check if the file is a .eml file
@@ -93,6 +113,7 @@ for eml_file in os.listdir(folder_path):
         # Extract the relevant information from the file
         # emailAddr, subject, auto_reply = extract_info(file_path)
         emlData = extract_info(file_path)
+        big_array.append(emlData)
         # print(type(emailAddr)) # print(str.format("Type is:  {type(emailAddr)}"))
         problem_addr = str(emlData['Final-Recipient'])
         cleaned_addr = re.findall(r'[\w\.-]+@[\w\.-]+', problem_addr)[0]
@@ -106,11 +127,11 @@ for eml_file in os.listdir(folder_path):
             info_dict[cleaned_addr]['frequency'] += 1
             if subject in info_dict[cleaned_addr]['subjects']:
                 info_dict[cleaned_addr]['subjects'][subject] += 1
-            else: info_dict[cleaned_addr]['subjects'][subject] = 1
+            elif subject is not None: info_dict[cleaned_addr]['subjects'][subject] = 1
 
             if thread_topic in info_dict[cleaned_addr]['subjects']:
                 info_dict[cleaned_addr]['subjects'][thread_topic] += 1
-            else: info_dict[cleaned_addr]['subjects'][thread_topic] = 1
+            elif thread_topic is not None: info_dict[cleaned_addr]['subjects'][thread_topic] = 1
             # if auto_reply in info_dict[cleaned_addr]['auto_replies']:
             #     info_dict[cleaned_addr]['auto_replies'][auto_reply] += 1
             # else: info_dict[cleaned_addr]['auto_replies'][auto_reply] = 1
@@ -126,9 +147,15 @@ for eml_file in os.listdir(folder_path):
                 'From': re.findall(emailRegEx, emlData['From'])[0]
 
             }
+# # DEPLOYMENT #
+# # Convert the dictionary to JSON
+# json_str = json.dumps(info_dict, indent=4)
 
-# Convert the dictionary to JSON
-json_str = json.dumps(info_dict, indent=4)
+# # Print the dictionary
+# print(json_str)
+# # END DEPLOYMENT
 
-# Print the dictionary
+# DEVELOPMENT
+json_str = json.dumps(big_array, indent=4)
 print(json_str)
+# END DEVELOPMENT

@@ -9,6 +9,7 @@
 import email
 import re
 import json
+import csv
 import os 
 from os import path # MINE
 from collections import Counter
@@ -22,6 +23,7 @@ def extract_info(file_path):
         msg = email.message_from_file(fileContents)
 
         xtractedFlds = {}
+        xtractedFlds['Problem-Address'] = None
         xtractedFlds['Delivered-To']= msg['Delivered-To']
         xtractedFlds['Subject']= msg['Subject']
         xtractedFlds['Thread-Topic']= msg['Thread-Topic']
@@ -35,7 +37,7 @@ def extract_info(file_path):
         # xtractedFlds['X-Ham-Report']= re.findall(emailRegEx, str(msg['X-Ham-Report']))
         
         # Used for filtering out invalid results
-        clientAddr = xtractedFlds['Delivered-To']
+        clientAddr = str(re.search(emailRegEx, str(xtractedFlds['Delivered-To']))[0])
         exclude_these = [clientAddr] # Can be an array of things to remove
 
         for part in msg.walk():
@@ -54,6 +56,8 @@ def extract_info(file_path):
         # print(re.findall(r'[\w\.-]+@[\w\.-]+', str(xtractedFlds['X-Ham-Report']))) # WORKS
         # print(re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))) # WORKS
 
+        
+
         if body_emails is not None: # This list should be populated
             # Use list comprehension to filter out unwanted addresses and store the result in a new list
             filtered_addrs = [x for x in body_emails if x not in exclude_these]
@@ -70,16 +74,25 @@ def extract_info(file_path):
             # Now set it back to the original object
             xtractedFlds['X-Ham-Report'] = filtered_addrs
 
-        if xtractedFlds['Final-Recipient'] is None:
+        # Attempt to identify the problem address and create a key value pair for it
+        xtractedFlds['Problem-Address'] = xtractedFlds['Final-Recipient']
+        if xtractedFlds['Problem-Address'] is None:
             if xtractedFlds['X-Failed-Recipients'] is not None:
-                xtractedFlds['Final-Recipient'] = xtractedFlds['X-Failed-Recipients']
+                xtractedFlds['Problem-Address'] = re.findall(emailRegEx, (xtractedFlds['X-Failed-Recipients']))
             elif xtractedFlds['Original-Recipient'] is not None:
-                xtractedFlds['Final-Recipient'] = xtractedFlds['Original-Recipient']
+                xtractedFlds['Problem-Address'] = re.findall(emailRegEx, (xtractedFlds['Original-Recipient']))
             elif xtractedFlds['From'] is not None:
-                xtractedFlds['Final-Recipient'] = xtractedFlds['From']
-            else: xtractedFlds['Final-Recipient'] = 'Final-Recipient@no.val'
-        # problem_addr = msg['X-Failed-Recipients']
-        # # If 'problem_addr' is still null, set it to the 
+                xtractedFlds['Problem-Address'] = re.findall(emailRegEx, (xtractedFlds['From']))
+            else: xtractedFlds['Problem-Address'] = clientAddr
+        
+        # Now do a final check to ensure that the client address isn't marked as the problem
+        if clientAddr or 'MAILER-DAEMON' or 'postmaster' in xtractedFlds['Problem-Address']:
+            if xtractedFlds['msgBody']: 
+                print(xtractedFlds['msgBody'][0])
+                xtractedFlds['Problem-Address'] = xtractedFlds['msgBody'][0]
+
+        # Now do a final cleaning of the problem addr to ensure it doesn't contain invalid items
+        xtractedFlds['Problem-Address'] = re.findall(emailRegEx, str(xtractedFlds['Problem-Address']))[0]
         # if problem_addr is None: # see https://realpython.com/python-string-contains-substring/
         #     if 'MAILER-DAEMON' in msg['From'] or 'postmaster' in msg['From']:
         #         problem_addr = msg['Original-Recipient']
@@ -110,7 +123,7 @@ info_dict = {}
 # Define the folder path
 # folder_path = 'ThunderbirdExports-TESTING'
 myDir = path.abspath(path.dirname(__file__)) # mine
-targetFolder = 'ThunderbirdExports-TESTING' # mine
+targetFolder = 'ThunderbirdExports' # mine
 folder_path = path.join(myDir, targetFolder) # mine
 # emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
 big_array = []
@@ -126,7 +139,7 @@ for eml_file in os.listdir(folder_path):
         emlData = extract_info(file_path)
         big_array.append(emlData)
         # print(type(emailAddr)) # print(str.format("Type is:  {type(emailAddr)}"))
-        problem_addr = str(emlData['Final-Recipient'])
+        problem_addr = str(emlData['Problem-Address'])
         cleaned_addr = re.findall(emailRegEx, problem_addr)[0]
         subject = emlData['Subject']
         thread_topic = emlData['Thread-Topic']
@@ -168,13 +181,13 @@ for eml_file in os.listdir(folder_path):
 
 # DEVELOPMENT
 # json_str = json.dumps(big_array, indent=4)
-# filtered_big_array is the subset of big_array wherein the msgBody list isn't empty
-#   A more efficient way than checking len(x['msgBody']) is to leverage the fact
-#   that when a list is put in an if statement, it returns True if non-empty and false otherwise.
-#   See https://datagy.io/check-if-python-list-is-empty/
-filtered_big_array = [x for x in big_array if x['msgBody']]
-json_str = json.dumps(filtered_big_array, indent=4)
-print(json_str)
+# # filtered_big_array is the subset of big_array wherein the msgBody list isn't empty
+# #   A more efficient way than checking len(x['msgBody']) is to leverage the fact
+# #   that when a list is put in an if statement, it returns True if non-empty and false otherwise.
+# #   See https://datagy.io/check-if-python-list-is-empty/
+# filtered_big_array = [x for x in big_array if x['msgBody']]
+# json_str = json.dumps(filtered_big_array, indent=4)
+# print(json_str)
 # END DEVELOPMENT
 
 # SAVE THE JSON ARRAY TO FILE
@@ -183,8 +196,10 @@ output_filename = 'EmlAnalysis.json'
 with open(output_filename, mode='w') as target_file:
     # target_file.write(json_str)
     # USE json.dump() to handle encoding
-    json.dump(obj=filtered_big_array, indent=4, fp=target_file)
+    # json.dump(obj=filtered_big_array, indent=4, fp=target_file)
+    json.dump(obj=big_array, indent=4, fp=target_file)
 target_file.close
+print(f"'{output_filename}' completed. Contains {len(big_array)} entries.")
 # END SAVE JSON ARRAY TO FILE
 
 # SAVE SUMMARY OBJ TO JSON FILE
@@ -195,4 +210,17 @@ with open(output_filename, mode='w') as target_file:
     # USE json.dump() to handle encoding
     json.dump(obj=info_dict, indent=4, fp=target_file)
 target_file.close
+print(f"'{output_filename}' completed. Contains {len(info_dict)} entries.")
 # END SAVE SUMMARY OBJ TO JSON FILE
+
+# SAVE FULL JSON ARRAY TO CSV
+output_filename = 'EmlAnalysis.csv'
+field_names = big_array[0].keys()
+print(field_names)
+with open(os.path.join(myDir, output_filename), mode='w', newline='') as target_file:
+    # writer = csv.DictWriter(file=os.path.join(folder_path, output_filename), fieldnames=field_names)
+    writer = csv.DictWriter(f=target_file, fieldnames=field_names)
+    writer.writeheader()
+    writer.writerows(big_array)
+target_file.close
+# END SAVE FULL JSON ARRAY TO CSV

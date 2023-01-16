@@ -13,14 +13,33 @@ import csv
 import os 
 from os import path # MINE
 from collections import Counter
+import pdb
 
 # Making this global. Will Probably move this to a config folder later.
-emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
+emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-\.]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
+emailPartRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-\.]+")
+
+def extract_email_list(text_block):
+    # print("var 'text_block' is of type: " + str(type(text_block))) # DEBUGGING
+    if type(text_block) is not str: text_block = str(text_block)    
+    email_list = []
+    try: email_list.extend(re.findall(emailRegEx, text_block))
+    except: 
+        print('Line 23 failed. Trying Line 26.')
+        email_list.extend(re.findall(emailPartRegEx, text_block))
+    
+    # Final attempt to extract partial email address
+    if not bool(email_list): email_list.extend(re.findall(emailPartRegEx, text_block))
+    # print('length of email_list:  ' + str(len(email_list)))
+    return email_list
+# END extract_email_list()
 
 # Define a function to extract the relevant information from a .eml file
-def extract_info(file_path):
-    with open(file_path, 'r') as fileContents:
-        msg = email.message_from_file(fileContents)
+def extract_info(file_path): # in the "open()" command, if encoding isn't specified, the operation can fail with a variety of coding errors
+    # with open(file_path, 'r', encoding="UTF-8") as fileContents:
+    #     msg = email.message_from_file(fileContents)
+    with open(file_path, 'rb') as fileContents: # opening file in binary mode works for most cases where file encoding is harder to detect.
+        msg = email.message_from_binary_file(fileContents)
 
         xtractedFlds = {}
         xtractedFlds['Problem-Address'] = None
@@ -35,9 +54,9 @@ def extract_info(file_path):
         xtractedFlds['Auto-Submitted']= msg['Auto-Submitted']
         xtractedFlds['X-Ham-Report']= msg['X-Ham-Report']
         # xtractedFlds['X-Ham-Report']= re.findall(emailRegEx, str(msg['X-Ham-Report']))
-        
+        body_emails = None
         # Used for filtering out invalid results
-        clientAddr = str(re.search(emailRegEx, str(xtractedFlds['Delivered-To']))[0])
+        clientAddr = extract_email_list(xtractedFlds['Delivered-To'])[0] # str(re.search(emailRegEx, str(xtractedFlds['Delivered-To']))[0])
         exclude_these = [clientAddr] # Can be an array of things to remove
 
         for part in msg.walk():
@@ -51,22 +70,25 @@ def extract_info(file_path):
                 # Body has been extracted
                 body_decoded = body.decode()
                 # Extract all valid emails from body
-                body_emails = re.findall(emailRegEx, body_decoded)
+                body_emails = extract_email_list(body_decoded) #body_emails = re.findall(emailRegEx, body_decoded)
+                # if body_emails is None: re.findall(emailPartRegEx, body_decoded)
         # print(xtractedFlds['X-Ham-Report']) # WORKS
         # print(re.findall(r'[\w\.-]+@[\w\.-]+', str(xtractedFlds['X-Ham-Report']))) # WORKS
         # print(re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))) # WORKS
 
         
-
+        # print(str(body_emails))
         if body_emails is not None: # This list should be populated
             # Use list comprehension to filter out unwanted addresses and store the result in a new list
             filtered_addrs = [x for x in body_emails if x not in exclude_these]
+            # print(str(filtered_addrs))
             xtractedFlds['msgBody'] = filtered_addrs
+        else: xtractedFlds['msgBody'] = None
         # print('Email addresses found in body: ' + str(filtered_addrs))
 
         if xtractedFlds['X-Ham-Report'] is not None:
             # Clean it so it's just email addresses
-            addrs_only = re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))
+            addrs_only = extract_email_list(xtractedFlds['X-Ham-Report']) # addrs_only = re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))
 
             # Now strip out email addresses you don't want in there
             filtered_addrs = [x for x in addrs_only if x not in exclude_these]
@@ -75,24 +97,34 @@ def extract_info(file_path):
             xtractedFlds['X-Ham-Report'] = filtered_addrs
 
         # Attempt to identify the problem address and create a key value pair for it
-        xtractedFlds['Problem-Address'] = xtractedFlds['Final-Recipient']
+        xtractedFlds['Problem-Address'] = extract_email_list(xtractedFlds['Final-Recipient'])
+        if len(xtractedFlds['Problem-Address']) < 1: xtractedFlds['Problem-Address'] = None # sets back to none of len is 0
         if xtractedFlds['Problem-Address'] is None:
-            if xtractedFlds['X-Failed-Recipients'] is not None:
-                xtractedFlds['Problem-Address'] = re.findall(emailRegEx, (xtractedFlds['X-Failed-Recipients']))
-            elif xtractedFlds['Original-Recipient'] is not None:
-                xtractedFlds['Problem-Address'] = re.findall(emailRegEx, (xtractedFlds['Original-Recipient']))
-            elif xtractedFlds['From'] is not None:
-                xtractedFlds['Problem-Address'] = re.findall(emailRegEx, (xtractedFlds['From']))
+            if bool(xtractedFlds['X-Failed-Recipients']): # if xtractedFlds['X-Failed-Recipients'] is not None and len(xtractedFlds['X-Failed-Recipients']) > 0:
+                xtractedFlds['Problem-Address'] = xtractedFlds['X-Failed-Recipients'] # re.findall(emailRegEx, (xtractedFlds['X-Failed-Recipients']))
+            elif bool(xtractedFlds['Original-Recipient']): # elif xtractedFlds['Original-Recipient'] is not None:
+                xtractedFlds['Problem-Address'] = xtractedFlds['Original-Recipient'] # re.findall(emailRegEx, (xtractedFlds['Original-Recipient']))
+            elif bool(xtractedFlds['From']): # elif xtractedFlds['From'] is not None:
+                xtractedFlds['Problem-Address'] = xtractedFlds['From'] # re.findall(emailRegEx, (xtractedFlds['From']))
             else: xtractedFlds['Problem-Address'] = clientAddr
         
         # Now do a final check to ensure that the client address isn't marked as the problem
         if clientAddr or 'MAILER-DAEMON' or 'postmaster' in xtractedFlds['Problem-Address']:
+            # print(f"xtractedFlds['msgBody'] bool val: {bool(xtractedFlds['msgBody'])}") # DEBUGGING
             if xtractedFlds['msgBody']: 
-                print(xtractedFlds['msgBody'][0])
+                # print(xtractedFlds['msgBody'][0]) # DEBUGGING
                 xtractedFlds['Problem-Address'] = xtractedFlds['msgBody'][0]
 
         # Now do a final cleaning of the problem addr to ensure it doesn't contain invalid items
-        xtractedFlds['Problem-Address'] = re.findall(emailRegEx, str(xtractedFlds['Problem-Address']))[0]
+        # print("xtractedFlds['Problem-Address'] is of type: " + str(type(xtractedFlds['Problem-Address'])) + '    with a val of: ' + str(xtractedFlds['Problem-Address'])) # DEBUGGING
+        try: xtractedFlds['Problem-Address'] = extract_email_list(xtractedFlds['Problem-Address'])[0] # try: xtractedFlds['Problem-Address'] = re.findall(emailRegEx, str(xtractedFlds['Problem-Address']))[0]
+        except: 
+            print(json.dumps(xtractedFlds, indent=4))
+            xtractedFlds['Problem-Address'] = re.sub("[\"\'\[\]]","",xtractedFlds['Problem-Address'])
+            # pdb.set_trace() # DEBUGGING to halt execution
+            
+            
+        # except: xtractedFlds['Problem-Address'] = re.findall(emailPartRegEx, str(xtractedFlds['Problem-Address']))[0]
         # if problem_addr is None: # see https://realpython.com/python-string-contains-substring/
         #     if 'MAILER-DAEMON' in msg['From'] or 'postmaster' in msg['From']:
         #         problem_addr = msg['Original-Recipient']
@@ -121,26 +153,28 @@ info_dict = {}
 
 
 # Define the folder path
-# folder_path = 'ThunderbirdExports-TESTING'
 myDir = path.abspath(path.dirname(__file__)) # mine
-targetFolder = 'ThunderbirdExports' # mine
+targetFolder = 'ThunderbirdExports-TESTING' # DEBUGGING
+# targetFolder = 'ThunderbirdExports' # DEPLOYMENT
 folder_path = path.join(myDir, targetFolder) # mine
-# emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
+# print("val of 'folder_path' in main:  " + folder_path) # emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
 big_array = []
+error_list = []
 # Iterate over the .eml files in the folder
 for eml_file in os.listdir(folder_path):
     # Check if the file is a .eml file
     if eml_file.endswith('.eml'):
-        # print('File Name:  ', eml_file) # DEBUGGING
+        print('File Name:  ', eml_file) # DEBUGGING
         # Create the full file path
         file_path = os.path.join(folder_path, eml_file)
         # Extract the relevant information from the file
         # emailAddr, subject, auto_reply = extract_info(file_path)
-        emlData = extract_info(file_path)
+        try: emlData = extract_info(file_path)
+        except: error_list.append(eml_file)
         big_array.append(emlData)
         # print(type(emailAddr)) # print(str.format("Type is:  {type(emailAddr)}"))
         problem_addr = str(emlData['Problem-Address'])
-        cleaned_addr = re.findall(emailRegEx, problem_addr)[0]
+        cleaned_addr = problem_addr #re.findall(emailRegEx, problem_addr)[0]
         subject = emlData['Subject']
         thread_topic = emlData['Thread-Topic']
         auto_reply = emlData['Auto-Submitted']
@@ -224,3 +258,14 @@ with open(os.path.join(myDir, output_filename), mode='w', newline='') as target_
     writer.writerows(big_array)
 target_file.close
 # END SAVE FULL JSON ARRAY TO CSV
+
+# SAVE SUMMARY OBJ TO JSON FILE
+output_filename = 'ERROR_LOG.txt'
+# open in write-mode will create a file if it doesn't exist and overwrite it if it does.
+with open(output_filename, mode='w') as target_file:
+    error_list = {"errors":error_list}
+    # USE json.dump() to handle encoding
+    json.dump(obj=error_list, indent=2, fp=target_file)
+target_file.close
+print(f"'{output_filename}' completed. Contains {len(info_dict)} entries.")
+# END SAVE SUMMARY OBJ TO JSON FILE

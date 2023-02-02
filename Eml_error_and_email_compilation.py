@@ -13,12 +13,15 @@ import csv
 import os 
 from os import path # MINE
 from collections import Counter
-import pdb
+# import pdb # DEBUGGING
+from datetime import datetime
+# from dateutil import parser # Requires 3rd-party lib?
 
 # Making this global. Will Probably move this to a config folder later.
 emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-\.]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
 emailPartRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-\.]+")
-
+emlDateFormat = '%a, %d %b %Y %H:%M:%S %z' # https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior
+threadTopicRegex = re.compile("Thread-Topic:\s([\w\s]+)")
 def extract_email_list(text_block):
     # print("var 'text_block' is of type: " + str(type(text_block))) # DEBUGGING
     if type(text_block) is not str: text_block = str(text_block)    
@@ -43,6 +46,8 @@ def extract_info(file_path): # in the "open()" command, if encoding isn't specif
 
         xtractedFlds = {}
         xtractedFlds['Problem-Address'] = None
+        xtractedFlds['Delivery-Date'] = msg['Delivery-Date']
+        # print(datetime.datetime.strptime(msg['Delivery-Date'], emlDateFormat))
         xtractedFlds['Delivered-To']= msg['Delivered-To']
         xtractedFlds['Subject']= msg['Subject']
         xtractedFlds['Thread-Topic']= msg['Thread-Topic']
@@ -58,8 +63,8 @@ def extract_info(file_path): # in the "open()" command, if encoding isn't specif
         # Used for filtering out invalid results
         clientAddr = extract_email_list(xtractedFlds['Delivered-To'])[0] # str(re.search(emailRegEx, str(xtractedFlds['Delivered-To']))[0])
         exclude_these = [clientAddr] # Can be an array of things to remove
-
         for part in msg.walk():
+            # print('msg part type: ' + str(part.get_content_type()))
             for key in xtractedFlds.keys():
                 if xtractedFlds[key] is None:
                     # To avoid setting the val of a key to that of the client's email addr
@@ -71,11 +76,20 @@ def extract_info(file_path): # in the "open()" command, if encoding isn't specif
                 body_decoded = body.decode()
                 # Extract all valid emails from body
                 body_emails = extract_email_list(body_decoded) #body_emails = re.findall(emailRegEx, body_decoded)
+            if part.get_content_type() == "text/rfc822-headers" and xtractedFlds['Thread-Topic'] is None:
+                body = part.get_payload(decode=True)
+                # Body has been extracted
+                body_decoded = body.decode()
+                # print('Thread-Topic by Regex: '+str(re.search(threadTopicRegex, str(body)).group(1)))
+                xtractedFlds['Thread-Topic'] = str(re.search(threadTopicRegex, str(body)).group(1)).strip()
                 # if body_emails is None: re.findall(emailPartRegEx, body_decoded)
         # print(xtractedFlds['X-Ham-Report']) # WORKS
         # print(re.findall(r'[\w\.-]+@[\w\.-]+', str(xtractedFlds['X-Ham-Report']))) # WORKS
         # print(re.findall(emailRegEx, str(xtractedFlds['X-Ham-Report']))) # WORKS
-
+#       print('\nThread Topic Type: '+str(type(xtractedFlds['Thread-Topic'])))
+        # CONVERT THE EML-FORMAT DATE STRING TO A DATE OBJECT, THEN TO AN ISO DATE STRING
+        # IF IT ISN'T EXPLICITYLY CONVERTED TO A DATE STRING, IT WILL FAIL TO CONVERT TO A JSON STRING LATER
+        xtractedFlds['Delivery-Date']= datetime.strptime(str(xtractedFlds['Delivery-Date']), emlDateFormat).strftime('%Y-%m-%dT%H:%M:%S%z')
         
         # print(str(body_emails))
         if body_emails is not None: # This list should be populated
@@ -123,7 +137,7 @@ def extract_info(file_path): # in the "open()" command, if encoding isn't specif
             xtractedFlds['Problem-Address'] = re.sub("[\"\'\[\]]","",xtractedFlds['Problem-Address'])
             # pdb.set_trace() # DEBUGGING to halt execution
             
-            
+        # print(json.dumps(xtractedFlds,indent=2)) # DEBUGGING 
         # except: xtractedFlds['Problem-Address'] = re.findall(emailPartRegEx, str(xtractedFlds['Problem-Address']))[0]
         # if problem_addr is None: # see https://realpython.com/python-string-contains-substring/
         #     if 'MAILER-DAEMON' in msg['From'] or 'postmaster' in msg['From']:
@@ -154,8 +168,8 @@ info_dict = {}
 
 # Define the folder path
 myDir = path.abspath(path.dirname(__file__)) # mine
-targetFolder = 'ThunderbirdExports-TESTING' # DEBUGGING
-# targetFolder = 'ThunderbirdExports' # DEPLOYMENT
+# targetFolder = 'ThunderbirdExports-TESTING' # DEBUGGING
+targetFolder = 'ThunderbirdExports' # DEPLOYMENT
 folder_path = path.join(myDir, targetFolder) # mine
 # print("val of 'folder_path' in main:  " + folder_path) # emailRegEx = re.compile("[a-zA-Z0-9_\.\-\+]{1,}@[a-zA-Z0-9\-]+\.[a-zA-Z0-9]{2,4}") # using re.compile is faster if using the pattern repeatedly.
 big_array = []
@@ -164,13 +178,16 @@ error_list = []
 for eml_file in os.listdir(folder_path):
     # Check if the file is a .eml file
     if eml_file.endswith('.eml'):
-        print('File Name:  ', eml_file) # DEBUGGING
+        # print('File Name:  ', eml_file) # DEBUGGING
         # Create the full file path
         file_path = os.path.join(folder_path, eml_file)
         # Extract the relevant information from the file
         # emailAddr, subject, auto_reply = extract_info(file_path)
         try: emlData = extract_info(file_path)
-        except: error_list.append(eml_file)
+        except: 
+            print('FAILURE ON: extract_info(file_path)!!!')
+            error_list.append(eml_file)
+
         big_array.append(emlData)
         # print(type(emailAddr)) # print(str.format("Type is:  {type(emailAddr)}"))
         problem_addr = str(emlData['Problem-Address'])
@@ -183,28 +200,43 @@ for eml_file in os.listdir(folder_path):
         # If problem_addr already exists, update it
         if cleaned_addr in info_dict:
             info_dict[cleaned_addr]['frequency'] += 1
-            if subject in info_dict[cleaned_addr]['subjects']:
-                info_dict[cleaned_addr]['subjects'][subject] += 1
-            elif subject is not None: info_dict[cleaned_addr]['subjects'][subject] = 1
-
-            if thread_topic in info_dict[cleaned_addr]['subjects']:
-                info_dict[cleaned_addr]['subjects'][thread_topic] += 1
-            elif thread_topic is not None: info_dict[cleaned_addr]['subjects'][thread_topic] = 1
+            # if subject in info_dict[cleaned_addr]['subjects']:
+            #     info_dict[cleaned_addr]['subjects'][subject] += 1
+            # elif subject is not None: info_dict[cleaned_addr]['subjects'][subject] = 1
+            if thread_topic is not None:
+                if thread_topic in info_dict[cleaned_addr]['subjects']:
+                    info_dict[cleaned_addr]['subjects'][thread_topic] += 1
+                else: info_dict[cleaned_addr]['subjects'][thread_topic] = 1
+            elif subject is not None:
+                # print('Thread_topic is None. Falling back to subject: ' + str(subject))
+                if subject in info_dict[cleaned_addr]['subjects']:
+                    info_dict[cleaned_addr]['subjects'][subject] += 1
+                else: info_dict[cleaned_addr]['subjects'][subject] = 1
             # if auto_reply in info_dict[cleaned_addr]['auto_replies']:
             #     info_dict[cleaned_addr]['auto_replies'][auto_reply] += 1
             # else: info_dict[cleaned_addr]['auto_replies'][auto_reply] = 1
+            if info_dict[cleaned_addr]['newest'] < emlData['Delivery-Date']:
+                info_dict[cleaned_addr]['newest'] = emlData['Delivery-Date']
+            if info_dict[cleaned_addr]['oldest'] > emlData['Delivery-Date']:
+                info_dict[cleaned_addr]['oldest'] = emlData['Delivery-Date']
             
         # If problem_addr doesn't already exist, add it.
         else:
             info_dict[cleaned_addr] = {
                 'frequency': 1, 
-                'subjects': {subject: 1}, 
+                'newest': emlData['Delivery-Date'],
+                'oldest': emlData['Delivery-Date'],
+                'subjects': {}, # 'subjects': {subject: 1}, 
                 # 'auto_replies': {auto_reply: 1},
                 'X-Failed-Recipients': emlData['X-Failed-Recipients'],
                 'Original-Recipient': emlData['Original-Recipient'],
                 'From': re.findall(emailRegEx, emlData['From'])[0]
-
             }
+            if thread_topic is not None:
+                info_dict[cleaned_addr]['subjects'][thread_topic] = 1
+            elif subject is not None:
+                info_dict[cleaned_addr]['subjects'][subject] = 1
+
 # # DEPLOYMENT #
 # # Convert the dictionary to JSON
 # json_str = json.dumps(info_dict, indent=4)
@@ -224,6 +256,19 @@ for eml_file in os.listdir(folder_path):
 # print(json_str)
 # END DEVELOPMENT
 
+# SORT SUMMARY DICTIONARY BY FREQUENCY
+# https://www.geeksforgeeks.org/python-sort-nested-dictionary-by-key/
+# https://www.geeksforgeeks.org/python-sorted-function/
+# https://www.geeksforgeeks.org/python-lambda-anonymous-functions-filter-map-reduce/
+# print('Summary dictionary in sorted form:') #DEBUGGING
+# sortedSummary = sorted(info_dict.items(), key = lambda x: x[1]['frequency'], reverse=True)
+sortedSummary = sorted(info_dict.items(), key = lambda x: (x[1]['frequency'], x[1]['newest']), reverse=True)
+# sortedSummary = sorted(info_dict.items(), key=lambda x: (x[1]['frequency'], x[1]['newest']), reverse=True)
+# print(json.dumps(sortedSummary, indent=4)) # DEBUGGING
+# END SORT SUMMARY DICTIONARY BY FREQUENCY
+
+
+#-----------------------------------------------------------------------------------#
 # SAVE THE JSON ARRAY TO FILE
 output_filename = 'EmlAnalysis.json'
 # open in write-mode will create a file if it doesn't exist and overwrite it if it does.
@@ -242,7 +287,8 @@ output_filename = 'EmlAnalysis_SUMMARY.json'
 with open(output_filename, mode='w') as target_file:
     # target_file.write(json_str)
     # USE json.dump() to handle encoding
-    json.dump(obj=info_dict, indent=4, fp=target_file)
+    # json.dump(obj=info_dict, indent=4, fp=target_file) # unsorted dictionary, but correct JSON formatting
+    json.dump(obj=sortedSummary, indent=4, fp=target_file) # sorted correctly, but incorrect JSON formatting
 target_file.close
 print(f"'{output_filename}' completed. Contains {len(info_dict)} entries.")
 # END SAVE SUMMARY OBJ TO JSON FILE
@@ -250,7 +296,7 @@ print(f"'{output_filename}' completed. Contains {len(info_dict)} entries.")
 # SAVE FULL JSON ARRAY TO CSV
 output_filename = 'EmlAnalysis.csv'
 field_names = big_array[0].keys()
-print(field_names)
+# print(field_names)
 with open(os.path.join(myDir, output_filename), mode='w', newline='') as target_file:
     # writer = csv.DictWriter(file=os.path.join(folder_path, output_filename), fieldnames=field_names)
     writer = csv.DictWriter(f=target_file, fieldnames=field_names)
@@ -267,5 +313,21 @@ with open(output_filename, mode='w') as target_file:
     # USE json.dump() to handle encoding
     json.dump(obj=error_list, indent=2, fp=target_file)
 target_file.close
-print(f"'{output_filename}' completed. Contains {len(info_dict)} entries.")
+print(f"'{output_filename}' completed. Contains {len(error_list['errors'])} entries.")
+print('ERRORS: ')
+print("    " + str(error_list['errors']))
 # END SAVE SUMMARY OBJ TO JSON FILE
+#-----------------------------------------------------------------------------------#
+
+# #-----------------------------------------------------------------------------------#
+# #---------------- TESTING DATE STRING FORMATTING -----------------------------------#
+# # emlDateFormat = '%a, %d %b %Y %H:%M:%S %z'
+# dateStr = 'Wed, 01 Jun 2022 14:03:24 -0400'
+# # print(datetime.datetime.strptime(dateStr, emlDateFormat)) # if import datetime
+# dtObj = datetime.strptime(dateStr, emlDateFormat)
+# iso_str = dtObj.strftime('%Y-%m-%dT%H:%M:%S%z')
+# # print(datetime.strptime(dateStr, emlDateFormat)) # if from datetime import datetime
+# print(dtObj)
+# print(iso_str)
+# #----------------- END TESTING DATE STRING FORMATTING ------------------------------#
+# #-----------------------------------------------------------------------------------#

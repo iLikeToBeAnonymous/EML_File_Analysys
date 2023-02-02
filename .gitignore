@@ -1,5 +1,8 @@
 *.eml
 /ThunderbirdExports
+/ThunderbirdExports-FULL
+/ThunderbirdExports-TESTING
+/ThunderbirdExports-TESTING-single
 /EmlAnalysis.json
 /EmlAnalysis.csv
 /ERROR_LOG.txt

@@ -7,6 +7,10 @@ The majority of the `.eml` files are assumed to be responses to messages origina
 Some messages, however, did not originate from the client email, but were from either an email address directly, a response from the mail server of the address which received the emails,
 or from the mail server of the outbound emails.
 
+### _How to Use_
+- Using Thunderbird, export all questionable emails as `.eml` files to the "ThunderbirdExports" folder.
+- Run the Python file `Eml_error_and_email_compilation.py`
+
 ### _Points of Interest_
 Because my Python was rusty when I began this project, I tried using ChatGPT as a helper. However, most of the code has been modified by me after-the-fact.
 
